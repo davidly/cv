@@ -766,23 +766,7 @@ void FitBitmapInFrame( Bitmap & frame, Bitmap & b )
         int stride = abs( bdb.Stride );
         int bytes = h * stride;
 
-        #if true
-
-            memcpy( bdFrame.Scan0, bdb.Scan0, bytes );
-
-        #else
-
-            byte *pframe = (byte *) bdFrame.Scan0;
-            byte *pb = (byte *) bdb.Scan0;
-            int halfbytes = bytes / 2;
-
-            parallel_for( 0, 2, [&] (int half)
-            {
-                int inc = half * halfbytes;
-                memcpy( pframe + inc, pb + inc, halfbytes );
-            } );
-
-        #endif
+        memcpy( bdFrame.Scan0, bdb.Scan0, bytes );
 
         frame.UnlockBits( &bdFrame );
         b.UnlockBits( &bdb );
@@ -1141,13 +1125,13 @@ extern "C" int __cdecl wmain( int argc, WCHAR * argv[] )
         if ( NULL == pwcSlash )
         {
             wcscpy( awcSpec, g_input_spec );
-            _wfullpath( awcPath, L".\\", sizeof awcPath / sizeof WCHAR );
+            _wfullpath( awcPath, L".\\", _countof( awcPath ) );
         }
         else
         {
             wcscpy( awcSpec, pwcSlash + 1 );
             *(pwcSlash + 1) = 0;
-            _wfullpath( awcPath, g_input_spec, sizeof awcPath / sizeof WCHAR );
+            _wfullpath( awcPath, g_input_spec, _countof( awcPath ) );
         }
     
         printf( "Path '%ws', File Specificaiton '%ws'\n", awcPath, awcSpec );
@@ -1220,8 +1204,6 @@ extern "C" int __cdecl wmain( int argc, WCHAR * argv[] )
         HRESULT hr = CoInitializeEx( NULL, COINIT_MULTITHREADED ); //APARTMENTTHREADED);
         if ( SUCCEEDED( hr ) )
         {
-            ULONG_PTR gdiplusToken;
-    
             hr = MFStartup( MF_VERSION );
             if ( SUCCEEDED( hr ) )
             {
@@ -1237,6 +1219,7 @@ extern "C" int __cdecl wmain( int argc, WCHAR * argv[] )
                 IMFSinkWriter *pSinkWriter = NULL;
                 DWORD stream;
     
+                ULONG_PTR gdiplusToken = 0;
                 hr = InitializeSinkWriter(&pSinkWriter, &stream, g_output_file );
                 if ( SUCCEEDED( hr ) )
                 {
