@@ -820,8 +820,6 @@ void FlipY( Bitmap & b )
     if ( stride != StrideInBytes( b.GetWidth(), ALL_BPP ) )
         printf( "stride in FlipY not expected\n" );
 
-#if true // this is almost twice as fast.
-
     byte * p = (byte *) bd.Scan0;
     int height = b.GetHeight();
     int half = height / 2;
@@ -849,27 +847,6 @@ void FlipY( Bitmap & b )
             bottom--;
         }
     } );
-
-#else
-
-    byte * p = (byte *) bd.Scan0;
-    vector<byte> row( stride );
-    int top = 0;
-    int bottom = b.GetHeight() - 1;
-
-    while ( top < bottom )
-    {
-        byte * ptop = p + ( top * stride );
-        byte * pbottom = p + ( bottom * stride );
-
-        memcpy( row.data(), ptop, stride );
-        memcpy( ptop, pbottom, stride );
-        memcpy( pbottom, row.data(), stride );
-
-        top++;
-        bottom--;
-    }
-#endif
 
     b.UnlockBits( &bd );
 } //FlipY
@@ -1356,7 +1333,6 @@ extern "C" int __cdecl wmain( int argc, WCHAR * argv[] )
                 if ( SUCCEEDED( hr ) )
                 {
                     printf( "\ncalling finalize() to finish compressing and writing the video...\n" );
-
                     hr = pSinkWriter->Finalize();
                 }
 
@@ -1406,11 +1382,9 @@ extern "C" int __cdecl wmain( int argc, WCHAR * argv[] )
                     FreeTransitionFrames();
                 }
     
-                // may not be needed; I think MFShutdown() does this. Can't come before Finalize() or the video is corrupted
+                // GdiplusShutdown may not be needed; I think MFShutdown() does this. 
     
-                printf( "calling gdi+ shutdown\n" );
                 GdiplusShutdown( gdiplusToken ); 
-    
                 MFShutdown();
             }
     
