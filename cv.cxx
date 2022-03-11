@@ -430,12 +430,12 @@ HRESULT WriteFrame( IMFSinkWriter *pWriter, DWORD streamIndex, const LONGLONG& r
 static byte ** g_aBitFrames = 0;
 static int g_animationFrames = 0;
 
-void AllocateTransitionFrames( int animationFrames, int bytesPerFrame, int stride )
+bool AllocateTransitionFrames( int animationFrames, int bytesPerFrame, int stride )
 {
     static bool allocatedyet = false;
 
     if ( allocatedyet )
-        return;
+        return true;
 
     allocatedyet = true;
 
@@ -444,6 +444,8 @@ void AllocateTransitionFrames( int animationFrames, int bytesPerFrame, int strid
 
     for ( int i = 0; i < animationFrames; i++ )
         g_aBitFrames[ i ] = new byte[ bytesPerFrame ];
+
+    return false;
 } //AlocateTransitionFrames
 
 void FreeTransitionFrames()
@@ -464,7 +466,6 @@ HRESULT WriteTransitionFrame( IMFSinkWriter *pWriter, DWORD streamIndex, const L
     if ( 0 == transition )
         return WriteFrame( pWriter, streamIndex, rtStart, duration, pFrame );
 
-    HRESULT hr = S_OK;
     float videoFrameTimeMS = 1000.0f / ( (float) VIDEO_FPS / 1.0f );
     int animationIntervalIS = (int) videoFrameTimeMS;
     int animationFrames = (int) ( (float) effect_ms / videoFrameTimeMS );
@@ -487,14 +488,14 @@ HRESULT WriteTransitionFrame( IMFSinkWriter *pWriter, DWORD streamIndex, const L
         {
             float opacity = (float) ( i + 0.1f ) / (float) animationFrames;
             byte *p = g_aBitFrames[ i ];
-
+    
             for ( int y = 0; y < g_height; y++ )
             {
                 int row = y * stride;
                 byte * prow = p + row;
                 byte * prowFrame = pFrame + row;
                 byte * prowEnd = prow + ( ALL_BYTESPP * g_width );
-
+    
                 do
                 {
                     *prow++ = (byte) ( ( float) ( *prowFrame++ ) * opacity );
@@ -510,14 +511,14 @@ HRESULT WriteTransitionFrame( IMFSinkWriter *pWriter, DWORD streamIndex, const L
         {
             float opacity = 1.0f - (float) i / (float) animationFrames;
             byte *p = g_aBitFrames[ i ];
-
+    
             for ( int y = 0; y < g_height; y++ )
             {
                 int row = y * stride;
                 byte * prow = p + row;
                 byte * prowFrame = pFrame + row;
                 byte * prowEnd = prow + ( ALL_BYTESPP * g_width );
-
+    
                 do
                 {
                     *prow++ = (byte) ( ( float) ( *prowFrame ) + ( ( 255 - *prowFrame++ ) * opacity ) );
@@ -527,6 +528,8 @@ HRESULT WriteTransitionFrame( IMFSinkWriter *pWriter, DWORD streamIndex, const L
             }
         } );
     }
+
+    HRESULT hr = S_OK;
 
     for ( int i = 0; SUCCEEDED( hr ) && ( i < animationFrames ); i++ )
     {
@@ -548,6 +551,7 @@ HRESULT WriteTransitionFrame( IMFSinkWriter *pWriter, DWORD streamIndex, const L
             currentTime += animationDurationPerFrame;
         }
     }
+
     return hr;
 } //WriteTransitionFrame
 
@@ -1065,7 +1069,7 @@ extern "C" int __cdecl wmain( int argc, WCHAR * argv[] )
        iArg++;
     }
 
-    if ( ( g_ms_transition_effect * 2 ) >= g_ms_delay )
+    if ( ( 0 != g_transition ) && ( g_ms_transition_effect * 2 ) >= g_ms_delay )
     {
         printf( "The transition effect time must be less than half the transition delay\n" );
         Usage();
