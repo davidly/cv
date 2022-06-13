@@ -172,6 +172,7 @@ int g_transition = 0;
 bool g_recurse = false;
 bool g_stats = false;
 bool g_usegpu = true;
+bool g_captions = false;
 UINT32 g_ms_delay = 1000;
 UINT32 g_ms_transition_effect = 200;  // this is per entrance/exit. So a frame could have 2x total transition time.
 std::mutex g_mtx;
@@ -750,6 +751,41 @@ static void ExifRotate( Image & img, int val, bool flipY )
 
 #endif // USE_WIC_FOR_OPEN
 
+void DrawCaption( Bitmap & frame, const WCHAR * pwcPath )
+{
+    vector<WCHAR> caption( 1 + wcslen( pwcPath ) );
+    wcscpy( caption.data(), pwcPath );
+    WCHAR * dot = wcsrchr( caption.data(), L'.' );
+    if ( dot )
+        *dot = 0;
+
+    WCHAR * slash = wcsrchr( caption.data(), L'\\' );
+    if ( slash )
+        wcscpy( caption.data(), slash + 1 );
+
+    for ( WCHAR *p = caption.data(); *p; p++ )
+        if ( L'-' == *p )
+            *p = ' ';
+
+    FontFamily fontFamily( L"Arial" );
+    Font font( &fontFamily, 12, FontStyleBold, UnitPoint );
+
+    SolidBrush solidBrush( Color( 255, 255, 127, 127 ) );
+
+    StringFormat stringFormat;
+    stringFormat.SetAlignment( StringAlignmentCenter );
+    stringFormat.SetLineAlignment( StringAlignmentCenter );
+
+    RectF rect;
+    Unit unit;
+    frame.GetBounds( &rect, &unit );
+
+    RectF rectLower( rect.GetLeft(), rect.GetBottom() / 2.0, rect.GetRight(), rect.GetBottom() / 2.0 );
+
+    Graphics graphics( & frame );
+    graphics.DrawString( caption.data(), -1, &font, rectLower, &stringFormat, &solidBrush );
+} //DrawCaption
+
 void FitBitmapInFrame( Bitmap & frame, Bitmap & b )
 {
     int w = frame.GetWidth();
@@ -909,6 +945,13 @@ extern "C" int __cdecl wmain( int argc, WCHAR * argv[] )
                    printf( "invalid bitrate\n\n" );
                    Usage();
                }
+           }
+           else if ( L'c' == a1 )
+           {
+               if ( 0 != pwcArg[2] )
+                   Usage();
+
+               g_captions = true;
            }
            else if ( L'd' == a1 )
            {
@@ -1278,14 +1321,17 @@ extern "C" int __cdecl wmain( int argc, WCHAR * argv[] )
                                     perfLoop.CumulateSince( totalRotateTime );
                                 #endif
 
-                                // FlipY is 15x faster than bitmap->RotateFlip( RotateNoneFlipY );
-
-                                FlipY( *bitmap );
-                                perfLoop.CumulateSince( totalFlipTime );
-        
                                 FitBitmapInFrame( *frame_bitmap_batch[ item ], *bitmap );
                                 perfLoop.CumulateSince( totalFitTime );
 
+                                if ( g_captions )
+                                    DrawCaption( *frame_bitmap_batch[ item ], paths.Get( batchBaseFrame + item ) );
+
+                                // FlipY is 15x faster than bitmap->RotateFlip( RotateNoneFlipY );
+
+                                FlipY( *frame_bitmap_batch[ item ] );
+                                perfLoop.CumulateSince( totalFlipTime );
+        
                                 if ( preserveFileOrder && ( 0 != item ) )
                                     WaitForSingleObject( frame_event_batch[ item - 1 ], INFINITE );
 
