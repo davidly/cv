@@ -207,19 +207,21 @@ static void Usage()
     printf( "             -o       Specifies the output file name. Overwrites existing file.\n" );
     printf( "             -p       Parallelism 1-16. If your images are small, try more. If out of RAM, try less. Default is 4\n" );
     printf( "             -r       Recurse into subdirectories looking for more images. Default is false\n" );
-    printf( "             -s       Stats: show detailed performance information\n" );
+    printf( "             -s:X     Sort order of input images. Lowercase/Uppercase inverts order. WCUPR (write, create, capture, path, random)\n" );
+    printf( "                      Default is random\n" );
     printf( "             -t       Add transitions between frames. Transitions types 1-2. Default none.\n" );
     printf( "             -w       Width of the video (images are scaled then center-cropped to fit). Default is 1920\n" );
-    printf( "  examples:  cv *.jpg /o:video.mp4 /d:500 /h:1920 /w:1080\n" );
-    printf( "             cv *.jpg /o:video.mp4 /b:5000000 /h:512 /w:512\n" );
-    printf( "             cv *.jpg /o:video.mp4 /b:5000000 /h:512 /w:512 /f:0x1300ac\n" );
+    printf( "             -z       Stats: show detailed performance information\n" );
+    printf( "  examples:  cv *.jpg /s:p /o:video.mp4 /d:500 /h:1920 /w:1080\n" );
+    printf( "             cv *.jpg /s:C /o:video.mp4 /b:5000000 /h:512 /w:512\n" );
+    printf( "             cv *.jpg /s:u /o:video.mp4 /b:5000000 /h:512 /w:512 /f:0x1300ac\n" );
     printf( "             cv *.jpg /o:video.mp4 /b:2500000 /h:512 /w:512 /p:1\n" );
     printf( "             cv *.jpg /o:video.mp4 /b:4000000 /h:2160 /w:3840 /p:16\n" );
     printf( "             cv d:\\pictures\\slothrust\\*.jpg /o:slothrust.mp4 /d:200\n" );
     printf( "             cv /t:1 d:\\pictures\\slothrust\\*.jpg /o:slothrust.mp4 /d:200\n" );
-    printf( "             cv /f:0x33aa44 /h:1500 /w:1000 /o:y:\\shirt.mp4 d:\\shirt\\*.jpg /d:490 /p:6 -s -g\n" );
-    printf( "             cv /f:0x33aa44 /h:1500 /w:1000 /o:y:\\shirt.mp4 d:\\shirt\\*.jpg /d:490 /p:16 -s\n" );
-    printf( "             cv /f:0x000000 /h:1080 /w:1920 /o:y:\\2020.mp4 d:\\zdrive\\pics\\2020_wow\\*.jpg /d:4000 /t:1 /e:300 /p:8 -s\n" );
+    printf( "             cv /f:0x33aa44 /h:1500 /w:1000 /o:y:\\shirt.mp4 d:\\shirt\\*.jpg /d:490 /p:6 -z -g\n" );
+    printf( "             cv /f:0x33aa44 /h:1500 /w:1000 /o:y:\\shirt.mp4 d:\\shirt\\*.jpg /d:490 /p:16 -z\n" );
+    printf( "             cv /f:0x000000 /h:1080 /w:1920 /o:y:\\2020.mp4 d:\\zdrive\\pics\\2020_wow\\*.jpg /d:4000 /t:1 /e:300 /p:8 -z\n" );
     printf( "  transitions:   1    Fade from/to black\n" );
     printf( "                 2    Fade from/to white\n" );
 
@@ -770,8 +772,6 @@ void DrawCaption( Bitmap & frame, const WCHAR * pwcPath )
     FontFamily fontFamily( L"Arial" );
     Font font( &fontFamily, 12, FontStyleBold, UnitPoint );
 
-    SolidBrush solidBrush( Color( 255, 255, 127, 127 ) );
-
     StringFormat stringFormat;
     stringFormat.SetAlignment( StringAlignmentCenter );
     stringFormat.SetLineAlignment( StringAlignmentCenter );
@@ -780,10 +780,22 @@ void DrawCaption( Bitmap & frame, const WCHAR * pwcPath )
     Unit unit;
     frame.GetBounds( &rect, &unit );
 
-    RectF rectLower( rect.GetLeft(), rect.GetBottom() / 2.0, rect.GetRight(), rect.GetBottom() / 2.0 );
+    RectF rectLower( rect.GetLeft(), rect.GetBottom() * 3.0 / 4.0, rect.GetRight(), rect.GetBottom() / 4.0 );
 
     Graphics graphics( & frame );
-    graphics.DrawString( caption.data(), -1, &font, rectLower, &stringFormat, &solidBrush );
+    graphics.SetSmoothingMode( SmoothingModeAntiAlias );
+    graphics.SetInterpolationMode( InterpolationModeHighQualityBicubic );
+
+    GraphicsPath path;
+    path.AddString( caption.data(), wcslen( caption.data() ), &fontFamily, FontStyleRegular, 12, rectLower, &stringFormat );
+    Pen pen( Color( 255, 255, 255 ), 4 );
+    pen.SetLineJoin( LineJoinRound );
+    graphics.DrawPath( &pen, &path);
+    SolidBrush brush( Color( 0, 0, 0 ) );
+    graphics.FillPath( &brush, &path );
+
+//    SolidBrush solidBrush( Color( 255, 255, 127, 127 ) );
+//    graphics.DrawString( caption.data(), -1, &font, rectLower, &stringFormat, &solidBrush );
 } //DrawCaption
 
 void FitBitmapInFrame( Bitmap & frame, Bitmap & b )
@@ -922,6 +934,8 @@ extern "C" int __cdecl wmain( int argc, WCHAR * argv[] )
     g_input_spec[ 0 ] = 0;
     g_input_text_file[ 0 ] = 0;
     g_output_file[ 0 ] = 0;
+    WCHAR sortOrder = 'r';
+    bool preserveFileOrder = false;
 
     while ( iArg < argc )
     {
@@ -1074,10 +1088,17 @@ extern "C" int __cdecl wmain( int argc, WCHAR * argv[] )
            }
            else if ( L's' == a1 )
            {
-               if ( 0 != pwcArg[2] )
+               if ( 0 == pwcArg[2] || 0 == pwcArg[3] )
                    Usage();
 
-               g_stats = true;
+               sortOrder = pwcArg[ 3 ];
+               WCHAR lorder = tolower( sortOrder );
+
+               if ( 'w' != lorder && 'c' != lorder && 'u' != lorder && 'p' != lorder && 'r' != lorder )
+               {
+                   printf( "invalid sort order\n\n" );
+                   Usage();
+               }
            }
            else if ( L't' == a1 )
            {
@@ -1094,6 +1115,13 @@ extern "C" int __cdecl wmain( int argc, WCHAR * argv[] )
                    printf( "invalid transition\n\n" );
                    Usage();
                }
+           }
+           else if ( L'z' == a1 )
+           {
+               if ( 0 != pwcArg[2] )
+                   Usage();
+
+               g_stats = true;
            }
            else
            {
@@ -1137,7 +1165,6 @@ extern "C" int __cdecl wmain( int argc, WCHAR * argv[] )
     }
 
     CPathArray paths;
-    bool preserveFileOrder = false; // files in the video have to be in order for input text files, but not when walking the file system
 
     if ( 0 != g_input_spec[0] )
     {
@@ -1162,8 +1189,6 @@ extern "C" int __cdecl wmain( int argc, WCHAR * argv[] )
 
         CEnumFolder enumFolder( g_recurse, &paths, NULL, 0 );
         enumFolder.Enumerate( awcPath, awcSpec );
-        paths.SortOnCreation();
-        paths.InvertSort();
     }
     else
     {
@@ -1190,15 +1215,32 @@ extern "C" int __cdecl wmain( int argc, WCHAR * argv[] )
                 paths.Add( awcLine );
         }
 
-        preserveFileOrder = true;
         fclose( file );
     }
-    
+
     if ( 0 == paths.Count() )
     {
         printf( "no input files found\n\n" );
         Usage();
     }
+
+    WCHAR lorder = tolower( sortOrder );
+    if ( 'w' == lorder )
+        paths.SortOnLastWrite();
+    else if ( 'c' == lorder )
+        paths.SortOnCreation();
+    else if ( 'u' == lorder )
+        paths.SortOnCapture();
+    else if ( 'p' == lorder )
+        paths.SortOnPath();
+    else if ( 'r' == lorder )
+        paths.Randomize();
+
+    if ( lorder != sortOrder )
+        paths.InvertSort();
+
+    if ( 'r' != lorder )
+        preserveFileOrder = true;
 
     printf( "%zd input files\n", paths.Count() );
 
